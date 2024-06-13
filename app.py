@@ -41,7 +41,7 @@ def crear_usuario():
             return jsonify({'mensaje': 'Usuario creado exitosamente'}), 201
         except psycopg2.Error as e:
             print("Error al insertar usuario en PostgreSQL:", e)
-            return jsonify({'error': 'Error al insertar usuario en PostgreSQL'}), 500
+            return jsonify({'error': 'La dirección de correo electrónico ya está en uso. Por favor, elija o introduzca otra.'}), 500
         finally:
             conn.close()
     else:
