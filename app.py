@@ -22,7 +22,7 @@ def index():
 def crear_usuario():
     conn = connect_to_database()
     if not conn:
-        return jsonify({'error': 'Error al conectar a PostgreSQL'}), 500
+        return jsonify({'error': 'Error al conectar'}), 500
 
     data = request.get_json()
     nombre = data.get('nombre')
@@ -40,7 +40,6 @@ def crear_usuario():
             cursor.close()
             return jsonify({'mensaje': 'Usuario creado exitosamente'}), 201
         except psycopg2.Error as e:
-            print("Error al insertar usuario en PostgreSQL:", e)
             return jsonify({'error': 'La dirección de correo electrónico ya está en uso. Por favor, elija o introduzca otra.'}), 500
         finally:
             conn.close()
@@ -52,7 +51,7 @@ def crear_usuario():
 def obtener_usuarios():
     conn = connect_to_database()
     if not conn:
-        return jsonify({'error': 'Error al conectar a PostgreSQL'}), 500
+        return jsonify({'error': 'Error al conectar'}), 500
 
     try:
         cursor = conn.cursor()
@@ -72,8 +71,7 @@ def obtener_usuarios():
         cursor.close()
         return jsonify(usuarios_json), 200
     except psycopg2.Error as e:
-        print("Error al obtener usuarios de PostgreSQL:", e)
-        return jsonify({'error': 'Error al obtener usuarios de PostgreSQL'}), 500
+        return jsonify({'error': 'Error al obtener usuarios existentes'}), 500
     finally:
         conn.close()
 
@@ -82,7 +80,7 @@ def obtener_usuarios():
 def login_usuario():
     conn = connect_to_database()
     if not conn:
-        return jsonify({'error': 'Error al conectar a PostgreSQL'}), 500
+        return jsonify({'error': 'Error al conectar'}), 500
 
     data = request.get_json()
     email = data.get('email')
@@ -109,12 +107,126 @@ def login_usuario():
             else:
                 return jsonify({'mensaje': 'Credenciales incorrectas'}), 401
         except psycopg2.Error as e:
-            print("Error al validar usuario en PostgreSQL:", e)
-            return jsonify({'error': 'Error al validar usuario en PostgreSQL'}), 500
+            return jsonify({'error': 'Error al validar usuario'}), 500
         finally:
             conn.close()
     else:
         return jsonify({'error': 'Faltan datos requeridos'}), 400
+    
+
+# Endpoint para crear un nuevo libro
+@app.route('/api/libros', methods=['POST'])
+def crear_libro():
+    conn = connect_to_database()
+    if not conn:
+        return jsonify({'error': 'Error al conectar'}), 500
+
+    data = request.get_json()
+    titulo = data.get('titulo')
+    autor = data.get('autor')
+    editorial = data.get('editorial')
+    fecha_publicacion = data.get('fecha_publicacion')
+    isbn = data.get('isbn')
+    numero_paginas = data.get('numero_paginas')
+    genero = data.get('genero')
+    idioma = data.get('idioma')
+
+    if titulo and autor and editorial and fecha_publicacion and isbn and numero_paginas and genero and idioma:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO libros (titulo, autor, editorial, fecha_publicacion, isbn, numero_paginas, genero, idioma)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (titulo, autor, editorial, fecha_publicacion, isbn, numero_paginas, genero, idioma))
+            conn.commit()
+            cursor.close()
+            return jsonify({'mensaje': 'Libro creado exitosamente'}), 201
+        except psycopg2.Error as e:
+            return jsonify({'error': 'Error al insertar'}), 500
+        finally:
+            conn.close()
+    else:
+        return jsonify({'error': 'Faltan datos requeridos'}), 400
+
+
+# Endpoint para obtener libros paginados
+@app.route('/api/libros', methods=['GET'])
+def obtener_libros():
+    conn = connect_to_database()
+    if not conn:
+        return jsonify({'error': 'Error al conectar'}), 500
+
+    # Obtén los parámetros de paginación de la solicitud
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+    offset = (page - 1) * per_page
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, titulo, autor, editorial, fecha_publicacion, isbn, numero_paginas, genero, idioma, fecha_creacion
+            FROM libros
+            LIMIT %s OFFSET %s
+        """, (per_page, offset))
+        libros = cursor.fetchall()
+
+        libros_json = []
+        for libro in libros:
+            libro_dict = {
+                'id': libro[0],
+                'titulo': libro[1],
+                'autor': libro[2],
+                'editorial': libro[3],
+                'fecha_publicacion': libro[4].strftime("%Y-%m-%d"),
+                'isbn': libro[5],
+                'numero_paginas': libro[6],
+                'genero': libro[7],
+                'idioma': libro[8],
+                'fecha_creacion': libro[9].strftime("%Y-%m-%d %H:%M:%S")
+            }
+            libros_json.append(libro_dict)
+
+        cursor.close()
+        return jsonify(libros_json), 200
+    except psycopg2.Error as e:
+        return jsonify({'error': 'Error al obtener libros existentes'}), 500
+    finally:
+        conn.close()
+
+
+# Endpoint para agregar un libro a la biblioteca personal del usuario
+@app.route('/api/biblioteca_personal', methods=['POST'])
+def agregar_libro_a_biblioteca_personal():
+    conn = connect_to_database()
+    if not conn:
+        return jsonify({'error': 'Error al conectar'}), 500
+
+    data = request.get_json()
+    usuario_id = data.get('usuario_id')
+    libro_id = data.get('libro_id')
+
+    if usuario_id and libro_id:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT 1 FROM biblioteca_personal WHERE usuario_id = %s AND libro_id = %s
+            """, (usuario_id, libro_id))
+            exists = cursor.fetchone()
+
+            if exists:
+                return jsonify({'mensaje': 'El libro ya se añadió anteriormente'}), 409
+
+            cursor.execute("""
+                INSERT INTO biblioteca_personal (usuario_id, libro_id)
+                VALUES (%s, %s)
+            """, (usuario_id, libro_id))
+            conn.commit()
+            cursor.close()
+            return jsonify({'mensaje': 'Libro agregado a la biblioteca personal'}), 201
+        except psycopg2.Error as e:
+            return jsonify({'error': 'Error al agregar libro a la biblioteca personal'}), 500
+        finally:
+            conn.close
 
 if __name__ == '__main__':
     app.run(debug=True)
